@@ -177,60 +177,52 @@ void findCommands(std::string inputLine, std::vector<std::string> &commands)
 
 void pipeCommands(std::vector<std::string> &commands)
 {
-    int oldP[2];
-    int newP[2];
-    pipe (oldP);
-    for (size_t i = 0; i < commands.size(); i++)
-    {
-        pipe(newP);
-        auto pid = fork();
-        if (pid < 0)
+    int fd[2];
+
+    pipe(fd);
+    
+    auto pid = fork();
+    if ( pid == 0 ) {
+        /* Redirect output of process into pipe */
+        close(STDOUT_FILENO);
+        close(fd[0]);
+        dup2( fd[1], STDOUT_FILENO );
+        
+        std::vector<char*> args;
+        std::vector<std::string> argsString;
+        parseLine(commands[0], argsString);
+        //Convert argString vector to char* vector
+        for (int i = 0; i < (int) argsString.size(); i++)
         {
-            perror("error");
-            exit(EXIT_FAILURE);
+            args.push_back((char*)argsString[i].c_str());
         }
-        if (pid == 0) //If child
-        {
-            dup2(oldP[0], 0);
-            close(oldP[0]);
-            close(oldP[1]);
-            //if there is another command
-            if (i + 1 < commands.size())
-            {
-                close(newP[0]);
-                dup2(newP[1], 1);
-                close(newP[1]);
-                
-            }
-            std::vector<char*> args;
-            std::vector<std::string> argsString;
-            parseLine(commands[0], argsString);
-            //Convert argString vector to char* vector
-            for (int i = 0; i < (int) argsString.size(); i++)
-            {
-                args.push_back((char*)argsString[i].c_str());
-            }
-            execvp(args[0], args.data());
-            perror("error");
-            exit(EXIT_FAILURE);
-        }
-        else //not child
-        {
-            close(oldP[0]);
-            close(oldP[1]);
-            //If there is another command
-            if (i + 1 < commands.size())
-            {
-                oldP[0] = newP[0];
-                oldP[1] = newP[1];
-            }
-            int status;
-            waitpid(pid, &status, 0);
-        }
-        close (oldP[0]);
-        close (oldP[1]);
+        execvp(args[0], args.data());
+        
+        perror("error");
+        exit(EXIT_FAILURE);
     }
-   
+    auto pid2 = fork();
+    if ( pid2 == 0 ) {
+        /* Redirect input of process out of pipe */
+        close(STDIN_FILENO);
+        close(fd[1]);
+        dup2( fd[0], STDIN_FILENO );
+        std::vector<char*> args;
+        std::vector<std::string> argsString;
+        parseLine(commands[1], argsString);
+        //Convert argString vector to char* vector
+        for (int i = 0; i < (int) argsString.size(); i++)
+        {
+            args.push_back((char*)argsString[i].c_str());
+        }
+        execvp(args[0], args.data());
+    }
+    /* Main process */
+    close( fd[0] );
+    close( fd[1] );
+    int status;
+    waitpid(pid, &status, 0);
+    waitpid(pid2, &status, 0);
 
 }
 
