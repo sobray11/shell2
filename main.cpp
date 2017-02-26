@@ -112,7 +112,7 @@ void parseLine(std::string line, std::vector<std::string> &argsString)
     {
         auto next = std::find(cur, line.end(), ' ');
         argsString.emplace_back(cur, next);
-        cur = std::find(cur, line.end(), ' ');
+        cur = next;
         if (cur == line.end())
         {
             break;
@@ -123,7 +123,7 @@ void parseLine(std::string line, std::vector<std::string> &argsString)
 
 void findCommands(std::string inputLine, std::vector<std::string> &commands)
 {
-    commands.clear();
+    //commands.clear();
     std::vector<char> key {'|','<','>'};
     
     auto startPosition = inputLine.begin();
@@ -178,7 +178,7 @@ void findCommands(std::string inputLine, std::vector<std::string> &commands)
 //            std::cout << commands[i] << std::endl;
 //        }
 //        std::cout << "Infile: " << inFile << ". \noutfile: " << outFile << "." << std::endl;
-    
+   
 }
 
 void pipeCommands(std::vector<std::string> &commands)
