@@ -12,6 +12,11 @@
 #include <sys/wait.h>
 #include <chrono>
 #include <algorithm>
+#include <fstream>
+#include <stdio.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 
 std::chrono::duration<double> timeSpent;
@@ -22,6 +27,7 @@ std::string inFile;
 std::string outFile;
 bool inFilebool = false;
 bool outFilebool = false;
+
 
 
 void executeCommand(std::vector<char*> &args);
@@ -177,13 +183,18 @@ void findCommands(std::string inputLine, std::vector<std::string> &commands)
 
 void pipeCommands(std::vector<std::string> &commands)
 {
-    int fd[2];
 
+    int fd[2];
+    
     pipe(fd);
     
     auto pid = fork();
+    if (pid < 0)
+    {
+        perror("error");
+        exit(EXIT_FAILURE);
+    }
     if ( pid == 0 ) {
-        /* Redirect output of process into pipe */
         close(STDOUT_FILENO);
         close(fd[0]);
         dup2( fd[1], STDOUT_FILENO );
@@ -197,13 +208,16 @@ void pipeCommands(std::vector<std::string> &commands)
             args.push_back((char*)argsString[i].c_str());
         }
         execvp(args[0], args.data());
-        
         perror("error");
         exit(EXIT_FAILURE);
     }
     auto pid2 = fork();
+    if (pid2 < 0)
+    {
+        perror("error");
+        exit(EXIT_FAILURE);
+    }
     if ( pid2 == 0 ) {
-        /* Redirect input of process out of pipe */
         close(STDIN_FILENO);
         close(fd[1]);
         dup2( fd[0], STDIN_FILENO );
@@ -216,16 +230,63 @@ void pipeCommands(std::vector<std::string> &commands)
             args.push_back((char*)argsString[i].c_str());
         }
         execvp(args[0], args.data());
+        perror("error");
+        exit(EXIT_FAILURE);
     }
     /* Main process */
     close( fd[0] );
     close( fd[1] );
     int status;
     waitpid(pid, &status, 0);
-    waitpid(pid2, &status, 0);
+}
+
+void inFilePipe(std::vector<std::string> &commands)
+{
+    int in;
+    in = open(inFile.c_str(), O_RDONLY);
+    int saved_stdin = dup(STDIN_FILENO);
+    
+    dup2(in, 0);
+    close(in);
+    
+    std::vector<char*> args;
+    std::vector<std::string> argsString;
+    parseLine(commands[0], argsString);
+    //Convert argString vector to char* vector
+    for (int i = 0; i < (int) argsString.size(); i++)
+    {
+        args.push_back((char*)argsString[i].c_str());
+    }
+    executeCommand(args);
+    
+    dup2(saved_stdin, STDIN_FILENO);
+    close(saved_stdin);
+    inFilebool = false;
 
 }
 
+void outFilePipe(std::vector<std::string> &commands)
+{
+    int out;
+    out = open(outFile.c_str(), O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
+    int saved_stdout = dup(STDOUT_FILENO);
+    
+    dup2(out, 1);
+    close(out);
+    
+    std::vector<char*> args;
+    std::vector<std::string> argsString;
+    parseLine(commands[0], argsString);
+    //Convert argString vector to char* vector
+    for (int i = 0; i < (int) argsString.size(); i++)
+    {
+        args.push_back((char*)argsString[i].c_str());
+    }
+    executeCommand(args);
+    dup2(saved_stdout, STDOUT_FILENO);
+    close(saved_stdout);
+    outFilebool = false;
+}
 int main()
 {
     
@@ -251,6 +312,16 @@ int main()
         {
             history(inputLine);
         }
+        else if (inFilebool)
+        {
+            inFilePipe(commands);
+        }
+        else if (outFilebool)
+        {
+            outFilePipe(commands);
+            
+            
+        }
         else if (commands.size() == 1)
         {
             std::vector<char*> args;
@@ -268,105 +339,5 @@ int main()
             pipeCommands(commands);
         }
     }
-    
-    
-    
-    
-//        int p[2];
-//        pipe(p);
-//        
-//        std::vector<char*> args;
-//        std::vector<std::string> argsString;
-//        
-//        parseLine(commands[0], argsString);
-//    
-//        for (int i = 0; i < (int) argsString.size(); i++)
-//        {
-//            args.push_back((char*)argsString[i].c_str());
-//        }
-//    
-//        auto pid = fork();
-//        if (pid < 0)
-//        {
-//            perror("error");
-//            exit(EXIT_FAILURE);
-//        }
-//        if (pid == 0)
-//        {
-//            dup2(p[1], STDOUT_FILENO);
-//            close(p[0]);
-//            execvp(args[0], args.data());
-//            perror("error");
-//            exit(EXIT_FAILURE);
-//        }
-//        
-//        std::vector<char*> args2;
-//        std::vector<std::string> argsString2;
-//        
-//        parseLine(commands[1], argsString2);
-//        
-//        for (int i = 0; i < (int) argsString2.size(); i++)
-//        {
-//            args2.push_back((char*)argsString2[i].c_str());
-//        }
-//        
-//        pid = fork();
-//        if (pid < 0)
-//        {
-//            perror("error");
-//            exit(EXIT_FAILURE);
-//        }
-//        if (pid == 0)
-//        {
-//            dup2(p[0], STDIN_FILENO);
-//            close(p[1]);
-//            execvp(args2[0], args2.data());
-//            perror("error");
-//            exit(EXIT_FAILURE);
-//        }
-//        else
-//        {
-//            int status;
-//            waitpid(pid, &status, 0);
-//        }
-//    }
-
-    //findCommands("A < infilename | B | C | D > outfilename");
-    
-//    while (running)
-//    {
-//        std::string line;
-//        std::vector<std::string> argsString;
-//        std::vector<char*> args;
-//        
-//        std::cout << "[cmd]: ";
-//        std::getline(std::cin, line);
-//        
-//        commandHistory.push_back(line);
-//        
-//        if (!line.compare("exit"))
-//        {
-//            running = false;
-//            std::cout << "Exiting Program\n";
-//            return 0;
-//        }
-//        else if (!line.compare("ptime"))
-//        {
-//            ptime();
-//        }
-//        else if (!line.compare("history") || line[0] == '^')
-//        {
-//            history(line);
-//        }
-//        else
-//        {
-//            parseLine(line, argsString);
-//            //Convert argString vector to char* vector
-//            for (int i = 0; i < (int) argsString.size(); i++)
-//            {
-//                args.push_back((char*)argsString[i].c_str());
-//            }
-//            executeCommand(args);
-//        }
-//    }
+ 
 }
